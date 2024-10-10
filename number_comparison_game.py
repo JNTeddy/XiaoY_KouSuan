@@ -1,0 +1,166 @@
+import cv2
+import numpy as np
+import pytesseract
+import pyautogui
+import tkinter as tk
+from PIL import Image, ImageGrab
+import time
+import threading
+import os
+from datetime import datetime
+
+
+# 设置Tesseract OCR的路径（根据您的安装位置进行调整）
+pytesseract.pytesseract.tesseract_cmd = r'E:\tesseract\tesseract.exe'
+
+class NumberComparisonGame:
+    def __init__(self):
+        self.running = False
+        self.thread = None
+        # 修改所有坐标定义为 (left, top, right, bottom)
+        self.left_number_area = (1280, 285, 1215 + 180, 285 + 125)  # 左侧数字区域
+        self.right_number_area = (1480, 315, 1480 + 120, 315 + 100)  # 右侧数字区域
+        self.result_area = (1250, 640, 1250 + 360, 640 + 230)  # 结果绘制区域
+        self.draw_speed = 0.1  # 减少绘制速度
+
+    def start(self):
+        if not self.running:
+            self.running = True
+            self.thread = threading.Thread(target=self.run)
+            self.thread.start()
+            print("游戏已开始")
+
+    def stop(self):
+        if self.running:
+            self.running = False
+            print("游戏已停止")
+
+    def run(self):
+        consecutive_failures = 0
+        max_consecutive_failures = 3  # 连续失败的最大次数
+
+        while self.running:
+            left_number = self.recognize_number(self.left_number_area, "left")
+            right_number = self.recognize_number(self.right_number_area, "right")
+            
+            print(f"识别到的数字: 左侧 = {left_number}, 右侧 = {right_number}")
+            
+            if left_number is None and right_number is None:
+                consecutive_failures += 1
+                print(f"连续无法识别两个数字: {consecutive_failures}/{max_consecutive_failures}")
+                if consecutive_failures >= max_consecutive_failures:
+                    print("连续多次无法识别两个数字，停止程序")
+                    self.running = False  # 直接设置 running 为 False
+                    break
+            elif left_number is not None and right_number is not None:
+                consecutive_failures = 0  # 重置连续失败计数
+                result = self.compare_and_draw(left_number, right_number)
+                print(f"比较结果: {result}")
+            else:
+                print("无法识别其中一个数字，跳过本次比较")
+                # 这里不增加 consecutive_failures，因为至少识别出了一个数字
+            
+            time.sleep(0.3)  # 减少等待时间到0.3秒
+
+    def recognize_number(self, area, side):
+        print(f"正在捕获区域: {area}")
+        screenshot = ImageGrab.grab(bbox=area)
+        
+        # 转换为灰度图像
+        gray = cv2.cvtColor(np.array(screenshot), cv2.COLOR_RGB2GRAY)
+        
+        # 应用高斯模糊以减少噪声
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        
+        # 应用自适应阈值处理
+        threshold = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        
+        # 应用形态学操作以进一步清理图像
+        kernel = np.ones((3,3), np.uint8)
+        opening = cv2.morphologyEx(threshold, cv2.MORPH_OPEN, kernel, iterations=1)
+        
+        # 使用更严格的配置进行OCR
+        number = pytesseract.image_to_string(opening, config='--psm 10 --oem 3 -c tessedit_char_whitelist=0123456789 -c tessedit_min_confidence=80')
+        print(f"OCR 结果: {number}")
+        try:
+            return int(number.strip())
+        except ValueError:
+            print(f"无法识别数字: {number}")
+            return None
+
+    def compare_and_draw(self, left, right):
+        x1, y1, x2, y2 = self.result_area
+        center_x = (x1 + x2) // 2
+        center_y = (y1 + y2) // 2
+        size = min(x2 - x1, y2 - y1) // 4  # 使用区域的1/4作为符号大小
+
+        # 移动到中心点
+        pyautogui.moveTo(center_x, center_y)
+
+        if left > right:
+            self.draw_greater_than(center_x, center_y, size)
+            result = '>'
+        elif left < right:
+            self.draw_less_than(center_x, center_y, size)
+            result = '<'
+        else:
+            self.draw_equal(center_x, center_y, size)
+            result = '='
+        
+        print(f"在区域 {self.result_area} 绘制了 '{result}'")
+        return result
+
+    def draw_greater_than(self, x, y, size):
+        pyautogui.mouseDown()
+        pyautogui.move(size, size/2, duration=self.draw_speed)  # 右下
+        pyautogui.move(-size, size/2, duration=self.draw_speed)  # 左下
+        pyautogui.mouseUp()
+
+    def draw_less_than(self, x, y, size):
+        pyautogui.mouseDown()
+        pyautogui.move(-size, size/2, duration=self.draw_speed)  # 左下
+        pyautogui.move(size, size/2, duration=self.draw_speed)  # 右下
+        pyautogui.mouseUp()
+
+    def draw_equal(self, x, y, size):
+        pyautogui.mouseDown()
+        pyautogui.move(size, 0, duration=self.draw_speed)  # 右
+        pyautogui.mouseUp()
+        pyautogui.move(-size, size//2)  # 左下移
+        pyautogui.mouseDown()
+        pyautogui.move(size, 0, duration=self.draw_speed)  # 右
+        pyautogui.mouseUp()
+
+    
+class GameGUI:
+    def __init__(self, master):
+        self.master = master
+        self.game = NumberComparisonGame()
+
+        self.master.title("数字比较游戏")
+
+        self.start_button = tk.Button(self.master, text="开始", command=self.start_game)
+        self.start_button.pack()
+
+        self.stop_button = tk.Button(self.master, text="停止", command=self.stop_game, state=tk.DISABLED)
+        self.stop_button.pack()
+
+    def start_game(self):
+        self.game.start()
+        self.start_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+
+    def stop_game(self):
+        self.game.stop()
+        if self.game.thread:
+            self.game.thread.join()  # 在 GUI 线程中等待游戏线程结束
+        self.start_button.config(state=tk.NORMAL)
+        self.stop_button.config(state=tk.DISABLED)
+
+def create_gui():
+    root = tk.Tk()
+    GameGUI(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    create_gui()
