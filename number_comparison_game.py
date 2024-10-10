@@ -21,7 +21,7 @@ class NumberComparisonGame:
         self.left_number_area = (1280, 285, 1215 + 180, 285 + 125)  # 左侧数字区域
         self.right_number_area = (1480, 315, 1480 + 120, 315 + 100)  # 右侧数字区域
         self.result_area = (1250, 640, 1250 + 360, 640 + 230)  # 结果绘制区域
-        self.draw_speed = 0.1  # 减少绘制速度
+        self.draw_speed = 0.05  # 减少绘制速度
 
     def start(self):
         if not self.running:
