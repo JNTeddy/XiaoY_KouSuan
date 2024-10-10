@@ -21,7 +21,10 @@ class NumberComparisonGame:
         self.left_number_area = (1280, 285, 1215 + 180, 285 + 125)  # 左侧数字区域
         self.right_number_area = (1480, 315, 1480 + 120, 315 + 100)  # 右侧数字区域
         self.result_area = (1250, 640, 1250 + 360, 640 + 230)  # 结果绘制区域
-        self.draw_speed = 0.05  # 减少绘制速度
+        self.draw_speed = 0.02  # 减少绘制速度
+        self.last_left = None
+        self.last_right = None
+        self.last_result = None
 
     def start(self):
         if not self.running:
@@ -50,15 +53,12 @@ class NumberComparisonGame:
                 print(f"连续无法识别两个数字: {consecutive_failures}/{max_consecutive_failures}")
                 if consecutive_failures >= max_consecutive_failures:
                     print("连续多次无法识别两个数字，停止程序")
-                    self.running = False  # 直接设置 running 为 False
+                    self.running = False
                     break
-            elif left_number is not None and right_number is not None:
+            else:
                 consecutive_failures = 0  # 重置连续失败计数
                 result = self.compare_and_draw(left_number, right_number)
                 print(f"比较结果: {result}")
-            else:
-                print("无法识别其中一个数字，跳过本次比较")
-                # 这里不增加 consecutive_failures，因为至少识别出了一个数字
             
             time.sleep(0.3)  # 减少等待时间到0.3秒
 
@@ -92,20 +92,45 @@ class NumberComparisonGame:
         x1, y1, x2, y2 = self.result_area
         center_x = (x1 + x2) // 2
         center_y = (y1 + y2) // 2
-        size = min(x2 - x1, y2 - y1) // 4  # 使用区域的1/4作为符号大小
+        size = min(x2 - x1, y2 - y1) // 4
 
-        # 移动到中心点
-        pyautogui.moveTo(center_x, center_y)
+        # 处理一边为 None 的情况
+        if left is None and right is not None:
+            left = right  # 假设左边应该等于右边
+        elif right is None and left is not None:
+            right = left  # 假设右边应该等于左边
 
-        if left > right:
-            self.draw_greater_than(center_x, center_y, size)
-            result = '>'
-        elif left < right:
-            self.draw_less_than(center_x, center_y, size)
-            result = '<'
+        # 初始化 result 为默认值
+        result = '>'  # 默认为等于
+
+        # 检查是否与上次结果相同
+        if left == self.last_left and right == self.last_right and (left is not None or right is not None):
+            time.sleep(0.1)
+            # 如果相同且不全为空，则输出相反的结果
+            if self.last_result == '>':
+                result = '<'
+            elif self.last_result == '<':
+                result = '>'
         else:
-            self.draw_equal(center_x, center_y, size)
-            result = '='
+            # 正常比较
+            if left > right:
+                result = '>'
+            elif left < right:
+                result = '<'
+            
+
+        # 更新上次的结果
+        self.last_left = left
+        self.last_right = right
+        self.last_result = result
+
+        # 移动到中心点并绘制
+        pyautogui.moveTo(center_x, center_y)
+        if result == '>':
+            self.draw_greater_than(center_x, center_y, size)
+        elif result == '<':
+            self.draw_less_than(center_x, center_y, size)
+        
         
         print(f"在区域 {self.result_area} 绘制了 '{result}'")
         return result
@@ -122,15 +147,7 @@ class NumberComparisonGame:
         pyautogui.move(size, size/2, duration=self.draw_speed)  # 右下
         pyautogui.mouseUp()
 
-    def draw_equal(self, x, y, size):
-        pyautogui.mouseDown()
-        pyautogui.move(size, 0, duration=self.draw_speed)  # 右
-        pyautogui.mouseUp()
-        pyautogui.move(-size, size//2)  # 左下移
-        pyautogui.mouseDown()
-        pyautogui.move(size, 0, duration=self.draw_speed)  # 右
-        pyautogui.mouseUp()
-
+    
     
 class GameGUI:
     def __init__(self, master):
